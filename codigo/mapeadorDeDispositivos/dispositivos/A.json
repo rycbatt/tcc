@@ -1,0 +1,17 @@
+{
+    "id":"ab:cd:df:fg:hi",
+    "conhecidos": [
+        {
+            "B":{
+                "id" : "ab:cd:fg:gi:jk",
+                "rssi": -40
+            }
+        },
+        {
+            "C":{
+                "id" : "ij:lm:no:pq:rs",
+                "rssi":-40
+            }
+        }
+    ]
+}
