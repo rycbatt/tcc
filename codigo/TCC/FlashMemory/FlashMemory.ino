@@ -2,18 +2,35 @@
 #include <QuickEspNow.h>
 #include "Localizator.h"
 
-// Função de callback para receber dados
-void dataReceived(uint8_t* address, uint8_t* data, uint8_t len, signed int rssi, bool broadcast) {
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", address[0], address[1], address[2], address[3], address[4], address[5]);
-    Serial.printf("Mensagem recebida de %s: %.*s\n", macStr, len, data);
-}
-
 // Instancia o Localizator
 Localizator localizator;
 
+#define BUTTON_PIN 0  // Defina o pino do botão
+unsigned long lastDebounceTime = 0;  // Último tempo de debounce
+unsigned long debounceDelay = 50;  // Atraso de debounce
+int buttonState = HIGH;  // Estado atual do botão
+int lastButtonState = HIGH;  // Último estado do botão
+int clickCount = 0;  // Contador de cliques
+unsigned long lastClickTime = 0;  // Último tempo de clique
+
+// Função de callback para receber dados
+void dataReceived(uint8_t* address, uint8_t* data, uint8_t len, signed int rssi, bool broadcast) {
+    localizator.receiveData(address, data, len, rssi);
+}
+
+// Função para piscar o LED
+void piscaLed(int pin, int delayTime) {
+    digitalWrite(pin, HIGH);
+    delay(delayTime);
+    digitalWrite(pin, LOW);
+    delay(delayTime);
+}
+
 void setup() {
     Serial.begin(115200);
+
+    // Configuração do pino do botão
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
 
     // Imprime o endereço MAC do dispositivo atual
     String macAddress = WiFi.macAddress();
@@ -26,7 +43,7 @@ void setup() {
     // Configura o WiFi e o ESP-NOW
     WiFi.mode(WIFI_MODE_STA);
     WiFi.disconnect(false);
-    quickEspNow.onDataRcvd(dataReceived);
+    quickEspNow.onDataRcvd(dataReceived); // Usa a função de callback definida
     quickEspNow.begin();
 
     // Envia o ID do dispositivo via ESP-NOW
@@ -39,5 +56,45 @@ void setup() {
 }
 
 void loop() {
-    // Código para loop principal (se necessário)
+    // Leitura do estado do botão
+    String id = localizator.getId();
+    quickEspNow.send(ESPNOW_BROADCAST_ADDRESS, (uint8_t*)id.c_str(), id.length());
+
+    int reading = digitalRead(BUTTON_PIN);
+
+    // Verificação de debounce
+    if (reading != lastButtonState) {
+        lastDebounceTime = millis();
+    }
+
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+        // Se o estado do botão mudou
+        if (reading != buttonState) {
+            buttonState = reading;
+            // Apenas conta cliques no botão quando ele é pressionado (estado LOW)
+            if (buttonState == LOW) {
+                if ((millis() - lastClickTime) < 500) {
+                    clickCount++;
+                } else {
+                    clickCount = 1;  // Reinicia a contagem se o tempo entre cliques for maior que 500ms
+                }
+                lastClickTime = millis();
+            }
+        }
+    }
+
+    // Se o botão foi pressionado 5 vezes rapidamente
+    if (clickCount == 5) {
+        localizator.clearPreferences();
+        clickCount = 0;  // Reseta o contador de cliques após limpar as preferências
+    }
+
+    lastButtonState = reading;
+
+    // Verifica se o modo é de calibração
+    if (localizator.getMode() == "CALIBRATE") {
+        pinMode(2, OUTPUT);  // Assume que o LED azul está no pino 2
+        // Pisca o LED azul para indicar o modo de calibração
+        piscaLed(2, 500);
+    }
 }
